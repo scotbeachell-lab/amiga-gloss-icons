@@ -7,8 +7,9 @@
     - desktop.ini IconResource for your user folders (Documents, Downloads, ...)
     - HKCU registry overrides for drive icons and the Recycle Bin
   System files (imageres.dll, shell32.dll) and HKLM are never touched.
-  Everything changed is backed up to %LOCALAPPDATA%\AmigaGloss\backup first,
-  and -Uninstall puts it all back.
+  The icons are copied to %USERPROFILE%\.amigagloss (a hidden folder) and
+  everything changed is backed up there first; -Uninstall puts it all back.
+  (Not %LOCALAPPDATA%: Explorer's folder windows won't load folder icons from there.)
 
   Build the icons first:  cd gen; python build_windows.py
 
@@ -25,7 +26,7 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $Src     = Join-Path $PSScriptRoot 'windows\ico'
-$Home_   = Join-Path $env:LOCALAPPDATA 'AmigaGloss'
+$Home_   = Join-Path $env:USERPROFILE '.amigagloss'
 $IcoDir  = Join-Path $Home_ 'ico'
 $Backup  = Join-Path $Home_ 'backup'
 $RegBak  = Join-Path $Backup 'registry.json'
@@ -167,6 +168,7 @@ if (-not $DryRun) {
     New-Item $Backup -ItemType Directory -Force | Out-Null
     if (Test-Path $IcoDir) { Remove-Item $IcoDir -Recurse -Force }
     Copy-Item $Src $IcoDir -Recurse
+    (Get-Item $Home_ -Force).Attributes = 'Directory, Hidden'
 }
 
 # --- folders

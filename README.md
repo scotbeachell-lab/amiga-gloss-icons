@@ -64,9 +64,10 @@ The installer changes only per-user settings:
 
 - **Folders:** Documents, Downloads, Music, Pictures, Videos and `%USERPROFILE%\GitHub` get their drawer icons through each folder's `desktop.ini`.
 - **Recycle Bin:** empty and full trash cans, through the HKCU registry.
-- **Drives:** hard disk, USB and optical icons per drive letter, through the HKCU registry.
+- **Drives:** SSD, hard disk, USB and optical icons per drive letter, through the HKCU registry. Windows 11's This PC view ignores these per-user drive overrides (it only honours the machine-wide `HKLM\...\Explorer\DriveIcons` key, which this script doesn't touch), so you may still see stock drive icons there.
+- **Sidebar:** the pinned Documents/Downloads/... entries in Explorer's sidebar come from Windows' machine-wide known-folder registration and keep their stock icons.
 
-The icons are copied to `%LOCALAPPDATA%\AmigaGloss\ico`, and everything changed is backed up next to them first. It never touches system files (`imageres.dll`, `shell32.dll`) or HKLM. If PowerShell refuses to run the script, use `powershell -ExecutionPolicy Bypass -File .\install-windows.ps1`.
+The icons are copied to a hidden `%USERPROFILE%\.amigagloss\ico` folder, and everything changed is backed up next to them first. (Not `%LOCALAPPDATA%`: Explorer's folder windows silently refuse folder icons stored there.) Explorer caches icons, so if something hasn't changed, restart Explorer or sign out and back in. It never touches system files (`imageres.dll`, `shell32.dll`) or HKLM. If PowerShell refuses to run the script, use `powershell -ExecutionPolicy Bypass -File .\install-windows.ps1`.
 
 ## How it works
 
