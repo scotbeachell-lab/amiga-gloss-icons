@@ -45,6 +45,29 @@ cd amiga-gloss-icons
 
 To get the checkered ball on your launcher, right-click it → *Configure* → click the icon → search for `start-here-amiga`. The common start-menu icon names (`start-here-kde`, `start-here-kde-symbolic`, `about_kde`) also map to the ball.
 
+## Windows
+
+Windows has no icon themes, so AmigaGloss can't replace every icon the way it does on KDE. It can change your user folders, drives and the Recycle Bin, and the `.ico` files work anywhere Windows asks you to pick an icon: shortcuts, pinned apps, *Properties → Customize → Change Icon* on any folder.
+
+```powershell
+git clone https://github.com/scotbeachell-lab/amiga-gloss-icons.git
+cd amiga-gloss-icons
+py -m venv .venv
+.venv\Scripts\python -m pip install resvg-py pillow
+cd gen; ..\.venv\Scripts\python build_windows.py; cd ..   # -> windows\ico\<context>\<name>.ico
+.\install-windows.ps1 -DryRun     # show what would change
+.\install-windows.ps1             # apply
+.\install-windows.ps1 -Uninstall  # put everything back
+```
+
+The installer changes only per-user settings:
+
+- **Folders:** Documents, Downloads, Music, Pictures, Videos and `%USERPROFILE%\GitHub` get their drawer icons through each folder's `desktop.ini`.
+- **Recycle Bin:** empty and full trash cans, through the HKCU registry.
+- **Drives:** hard disk, USB and optical icons per drive letter, through the HKCU registry.
+
+The icons are copied to `%LOCALAPPDATA%\AmigaGloss\ico`, and everything changed is backed up next to them first. It never touches system files (`imageres.dll`, `shell32.dll`) or HKLM. If PowerShell refuses to run the script, use `powershell -ExecutionPolicy Bypass -File .\install-windows.ps1`.
+
 ## How it works
 
 | File | Purpose |
@@ -53,6 +76,8 @@ To get the checkered ball on your launcher, right-click it → *Configure* → c
 | `gen/art.py` | Pictograms and objects (drawers, disks, globe, ball…) |
 | `gen/objects.py` | Composite bases: drawer, document, tile |
 | `gen/build.py` | Maps KDE/freedesktop icon names to drawings, then writes the theme |
+| `gen/build_windows.py` | Renders every drawn icon to a multi-size Windows `.ico` |
+| `install-windows.ps1` | Applies (or removes) the icons on Windows for the current user |
 
 To add or change an icon, add one line to `build.py`:
 
