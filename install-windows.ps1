@@ -47,12 +47,52 @@ $Folders = [ordered]@{
     (Join-Path $env:USERPROFILE 'GitHub')                        = 'places\folder-development'
 }
 
-$RecycleKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\CLSID\{645FF040-5081-101B-9F08-00AA002F954E}\DefaultIcon'
+# Windows 10/11 "known folders" take their icon from a machine-wide registration that
+# overrides desktop.ini, so they also need a per-user override of their shell CLSID.
+$KnownFolderClsid = [ordered]@{
+    '{d3162b92-9365-467a-956b-92703aca08af}' = 'places\folder-documents'
+    '{088e3905-0323-4b02-9826-5d99428e115f}' = 'places\folder-download'
+    '{3dfdf296-dbec-4fb4-81d1-6a3438bcf4de}' = 'places\folder-music'
+    '{24ad3ad4-a569-4530-98e1-ab02f9417aa8}' = 'places\folder-pictures'
+    '{f86fa3ab-70d2-4fc7-9c99-fcbf05467f3a}' = 'places\folder-videos'
+}
+$ClsidRoot = 'HKCU:\Software\Classes\CLSID'
+
+$RecycleKey ='HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\CLSID\{645FF040-5081-101B-9F08-00AA002F954E}\DefaultIcon'
 $DriveRoot  = 'HKCU:\Software\Classes\Applications\Explorer.exe\Drives'
 
 function Say($msg) { if ($DryRun) { Write-Host "[dry run] $msg" } else { Write-Host $msg } }
 function Ico($rel) { Join-Path $IcoDir ($rel + '.ico') }
 function Safe-Name($path) { ($path -replace '[:\\/]', '_') }
+
+function Remove-RegValue($key, $name) {
+    # Remove-ItemProperty can't delete a key's default value by the name '(default)'
+    if (-not (Test-Path $key)) { return }
+    $sub = (Convert-Path $key) -replace '^HKEY_CURRENT_USER\\', ''
+    $rk = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($sub, $true)
+    if ($rk) {
+        $rk.DeleteValue($(if ($name -eq '(default)') { '' } else { $name }), $false)
+        $rk.Close()
+    }
+}
+
+function Drive-Icon($letter, $type) {
+    if ($type -eq 'Fixed') {
+        try {
+            $disk = Get-Partition -DriveLetter $letter -ErrorAction Stop | Get-Disk -ErrorAction Stop
+            if ($disk.BusType -eq 'USB') { return 'devices\drive-harddisk-usb' }
+            $media = (Get-PhysicalDisk -ErrorAction Stop | Where-Object { $_.DeviceId -eq "$($disk.Number)" }).MediaType
+            if ($disk.BusType -eq 'NVMe' -or $media -eq 'SSD') { return 'devices\drive-harddisk-solidstate' }
+        } catch { }
+        return 'devices\drive-harddisk'
+    }
+    switch ($type) {
+        'Removable' { 'devices\drive-harddisk-usb' }
+        'CDRom'     { 'devices\drive-optical' }
+        'Network'   { 'places\folder-remote' }
+        default     { $null }
+    }
+}
 
 function Refresh-Icons {
     if ($DryRun) { return }
@@ -91,16 +131,19 @@ if ($Uninstall) {
                 }
             } else {
                 Say "remove   $($e.key) [$($e.name)]"
-                if (-not $DryRun -and (Test-Path $e.key)) {
-                    Remove-ItemProperty -Path $e.key -Name $e.name -ErrorAction SilentlyContinue
-                }
+                if (-not $DryRun) { Remove-RegValue $e.key $e.name }
             }
         }
-        # drop the drive-override keys we created if they are now empty
-        if (-not $DryRun -and (Test-Path $DriveRoot)) {
-            Get-ChildItem $DriveRoot | ForEach-Object {
-                $di = Join-Path $_.PSPath 'DefaultIcon'
-                if ((Test-Path $di) -and -not (Get-Item $di).Property) { Remove-Item $_.PSPath -Recurse -Force }
+        # drop override keys we created if they are now empty; an empty per-user
+        # DefaultIcon key would hide the system icon and leave a blank one
+        if (-not $DryRun) {
+            $parents = @()
+            if (Test-Path $DriveRoot) { $parents += Get-ChildItem $DriveRoot | ForEach-Object { $_.PSPath } }
+            $parents += $KnownFolderClsid.Keys | ForEach-Object { Join-Path $ClsidRoot $_ } | Where-Object { Test-Path $_ }
+            foreach ($p in $parents) {
+                $di = Join-Path $p 'DefaultIcon'
+                if ((Test-Path $di) -and -not (Get-Item $di).Property -and -not (Get-ChildItem $di)) { Remove-Item $di -Force }
+                if (-not (Get-Item $p).Property -and -not (Get-ChildItem $p)) { Remove-Item $p -Force }
             }
         }
     }
@@ -183,16 +226,13 @@ Set-Reg $RecycleKey '(default)' $(if ($isFull) { "$full,0" } else { "$empty,0" }
 Set-Reg $RecycleKey 'empty'     "$empty,0"
 Set-Reg $RecycleKey 'full'      "$full,0"
 
+foreach ($c in $KnownFolderClsid.Keys) {
+    Set-Reg (Join-Path $ClsidRoot ($c + '\DefaultIcon')) '(default)' ((Ico $KnownFolderClsid[$c]) + ',0')
+}
+
 foreach ($d in Get-PSDrive -PSProvider FileSystem) {
     if ($d.Root -notmatch '^[A-Z]:\\$') { continue }
-    $type = ([IO.DriveInfo]$d.Root).DriveType
-    $rel = switch ($type) {
-        'Fixed'     { 'devices\drive-harddisk' }
-        'Removable' { 'devices\drive-harddisk-usb' }
-        'CDRom'     { 'devices\drive-optical' }
-        'Network'   { 'places\folder-remote' }
-        default     { $null }
-    }
+    $rel = Drive-Icon $d.Name ([IO.DriveInfo]$d.Root).DriveType
     if (-not $rel -or -not (Test-Path (Join-Path $Src ($rel + '.ico')))) { continue }
     Set-Reg (Join-Path $DriveRoot ($d.Name + '\DefaultIcon')) '(default)' (Ico $rel)
 }
